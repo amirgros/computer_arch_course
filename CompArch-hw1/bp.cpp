@@ -40,6 +40,15 @@ struct BTB_context_t
 
 struct BTB_context_t BTB_context;
 
+
+uint32_t get_relevant_tag(uint32_t pc)
+{
+	// pc has 2 bits of 0, then log2(btbSize) bits for entry, then tagSize bits for tag
+	int tag_start = 2 + (int)log2(BTB_context.btbSize);
+	uint32_t mask = (1 << BTB_context.tagSize) - 1; // creates a mask with tagSize bits of 1 (rest are 0)
+	return (pc >> tag_start) & mask;
+}
+
 int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned fsmState,
 			bool isGlobalHist, bool isGlobalTable, int Shared)
 {
@@ -100,59 +109,54 @@ int BP_init(unsigned btbSize, unsigned historySize, unsigned tagSize, unsigned f
 
 bool BP_predict(uint32_t pc, uint32_t *dst)
 {
-	// search tag in BTB
-	for (int i = 0; i < BTB_context.BTB.size(); i++)
-	{
-		if (BTB_context.BTB[i].valid && BTB_context.BTB[i].tag == get_relevant_tag(pc))
-		{ // command in btb:
-			int const not_using_share = 0;
-			int const using_share_lsb = 1;
-			int const using_share_mid = 2;
+	// check if pc in btb:
+	uint32_t pc_tag = get_relevant_tag(pc);
+	uint32_t entry_mask = BTB_context.btbSize - 1;
+	int BTB_entry = (pc >> 2) & entry_mask;
+	if (BTB_context.BTB[BTB_entry].valid && BTB_context.BTB[BTB_entry].tag == pc_tag)
+	{ // command in btb:
+		int const not_using_share = 0;
+		int const using_share_lsb = 1;
+		int const using_share_mid = 2;
 
-			bool predicted_state;
-			int hist_ind = BTB_context.BTB[i].history_index;
-			int hist_val = BTB_context.history[hist_ind]; // value of relevant history register
-			int fsm_tab_ind;
-			if (BTB_context.isGlobalTable) // L\Gshare relevant
+		unsigned predicted_state;
+		int hist_ind = BTB_context.BTB[BTB_entry].history_index;
+		int hist_val = BTB_context.history[hist_ind]; // value of relevant history register
+		int fsm_tab_ind = BTB_context.BTB[BTB_entry].fsm_table_index;
+		int fsm_ind = hist_val;
+		if (BTB_context.isGlobalTable) // L\Gshare relevant
+		{
+			uint32_t mask = (1 << BTB_context.historySize) - 1;
+			switch (BTB_context.Shared)
 			{
-				switch (BTB_context.Shared)
-				{
-				case not_using_share:
-					fsm_tab_ind = BTB_context.BTB[i].fsm_table_index;
-					break;
-				case using_share_lsb:
-					uint32_t mask = (1 << BTB_context.historySize) - 1;
-					fsm_tab_ind = mask ^ (pc >> 2);
-					break;
-				case using_share_mid:
-					uint32_t mask = (1 << BTB_context.historySize) - 1;
-					fsm_tab_ind = mask ^ (pc >> 16);
-					break;
-				default:
-					break;
-				}
-			}
-			else
-			{
-				fsm_tab_ind = BTB_context.BTB[i].fsm_table_index;
-			}
-			predicted_state = BTB_context.fsm_tables[fsm_tab_ind].fsm[hist_val];
-			if (predicted_state == 2 || predicted_state == 3)
-			{ // taken
-				*dst = BTB_context.BTB[i].target;
-				return true;
-			}
-			else
-			{ // not taken
-				*dst = pc + 4;
-				return false;
+			case not_using_share:
+				break;
+			case using_share_lsb:
+				fsm_ind = (mask & (pc >> 2)) ^ hist_val;
+				break;
+			case using_share_mid:
+				fsm_ind = (mask & (pc >> 16)) ^ hist_val;
+				break;
+			default:
+				break;
 			}
 		}
-
-		// command not in btb
-		*dst = pc + 4;
-		return false;
+		predicted_state = BTB_context.fsm_tables[fsm_tab_ind].fsm[fsm_ind];
+		if (predicted_state == 2 || predicted_state == 3)
+		{ // taken
+			*dst = BTB_context.BTB[BTB_entry].target;
+			return true;
+		}
+		else
+		{ // not taken
+			*dst = pc + 4;
+			return false;
+		}
 	}
+
+	// command not in btb
+	*dst = pc + 4;
+	return false;
 }
 
 void BP_update(uint32_t pc, uint32_t targetPc, bool taken, uint32_t pred_dst)
@@ -164,7 +168,7 @@ void BP_GetStats(SIM_stats *curStats)
 {
 	curStats->br_num = BTB_context.cmds_counter;
 	curStats->flush_num = BTB_context.flushes_counter;
-	// size = BTBsize*(tagSize + targetsSize without 00 + valid bit) +
+	// size = BTBsize*(tagSize + target size without 00 + valid bit) +
 	// historySize*number of histories + tableSize * number of tables * 2 bits
 	unsigned theoretic_size = BTB_context.btbSize * (BTB_context.tagSize + 30 + 1) +
 							  BTB_context.historySize * (BTB_context.isGlobalHist ? 1 : BTB_context.btbSize) +
@@ -183,11 +187,3 @@ void BP_GetStats(SIM_stats *curStats)
 	return;
 }
 
-// can use get_relevant_tag when entering new line to BTB (to get the new tag)
-uint32_t get_relevant_tag(uint32_t pc)
-{
-	// pc has 2 bits of 0, then log2(btbSize) bits for entry, then tagSize bits for tag
-	int tag_start = 2 + (int)log2(BTB_context.btbSize);
-	uint32_t mask = (1 << BTB_context.tagSize) - 1; // creates a mask with tagSize bits of 1 (rest are 0)
-	return (pc >> tag_start) & mask;
-}
