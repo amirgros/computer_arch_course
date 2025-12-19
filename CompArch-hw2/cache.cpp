@@ -65,12 +65,6 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     memConfig.WrAlloc = WrAlloc;
 }
 
-unsigned getOffset(unsigned address)
-{
-    unsigned offset_mask = (1 << memConfig.BSize) - 1;
-    return address & offset_mask;
-}
-
 unsigned getSet(unsigned address, cache &c)
 {
     unsigned set_mask = ((1 << (c.Size - memConfig.BSize - c.NumWays)) - 1);
@@ -118,7 +112,6 @@ unsigned findWayToReplace(cache &c, unsigned set)
 int checkHit(unsigned address, cache &c)
 {
     // devide address into tag, set, offset
-    unsigned offset = getOffset(address);
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 
@@ -137,7 +130,6 @@ int checkHit(unsigned address, cache &c)
 int writeToCache(unsigned address, cache &c)
 {
     // devide address into tag, set, offset
-    unsigned offset = getOffset(address);
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 
@@ -157,7 +149,6 @@ int writeToCache(unsigned address, cache &c)
 unsigned addBlockToCache(unsigned address, cache &c)
 {
     // devide address into tag, set, offset
-    unsigned offset = getOffset(address);
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 

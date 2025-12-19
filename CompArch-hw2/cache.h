@@ -53,7 +53,6 @@ void destroyBlock(block b); // delete content from block
 
 //////////////////////////////////////////////////
 
-unsigned getOffset(unsigned address);
 unsigned getSet(unsigned address, cache &c);
 unsigned getTag(unsigned address, cache &c);
 
