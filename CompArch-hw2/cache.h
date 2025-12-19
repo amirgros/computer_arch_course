@@ -10,19 +10,20 @@ struct block
     unsigned tag;
     bool valid;
     bool dirty;
-    unsigned lastUsed;
 };
 
 typedef vector<block> way;
+typedef vector<bool> wayLRU;
 
 struct cache
 {
     vector<way> Ways;
+    vector<wayLRU> LRU; // PLRU - binary tree LRU per set
     unsigned Size;
     unsigned NumWays;
     unsigned Cyc;
-    unsigned NumOps;
-    unsigned NumMisses
+    unsigned NumCalls;
+    unsigned NumMisses;
 };
 
 struct memConfig_t
@@ -52,17 +53,23 @@ void destroyBlock(block b); // delete content from block
 
 //////////////////////////////////////////////////
 
-// get to block location by address
-block getBlockLocationInCache(unsigned address, cache &c);
+unsigned getOffset(unsigned address);
+unsigned getSet(unsigned address, cache &c);
+unsigned getTag(unsigned address, cache &c);
 
-// check if block matches address tag
-bool checkHit(unsigned address, block b);
-
-// write block to cache
-void writeToCache(unsigned address, cache &c);
+// update LRU info after hit
+void updateLRU(cache &c, unsigned set, unsigned way);
 
 // LRU
-block findBlockToReplace(unsigned address, cache &c);
+unsigned findWayToReplace(cache &c, unsigned set);
+
+// check if block matches address tag - return 1 if hit, 0 if miss
+int checkHit(unsigned address, cache &c);
+
+// write block to cache
+int writeToCache(unsigned address, cache &c);
+
+unsigned addBlockToCache(unsigned address, cache &c);
 
 //////////////////////////////////////////////////
 
