@@ -21,6 +21,8 @@ struct cache
     unsigned Size;
     unsigned NumWays;
     unsigned Cyc;
+    unsigned NumOps;
+    unsigned NumMisses
 };
 
 struct memConfig_t
@@ -30,8 +32,6 @@ struct memConfig_t
     unsigned MemCyc;
     unsigned BSize;
     unsigned WrAlloc;
-    double L1ReadMissRate;
-    double L2ReadMissRate;
     int numOperations;
     double totalCycles;
 };
@@ -66,6 +66,10 @@ block findBlockToReplace(unsigned address, cache &c);
 
 //////////////////////////////////////////////////
 
-void read(unsigned address); // return tot # of cycles, main will calc misses from that
+void read(unsigned address);
 
 void write(unsigned address);
+
+double getL1MissRate();
+double getL2MissRate();
+double getAvgAccTime();
