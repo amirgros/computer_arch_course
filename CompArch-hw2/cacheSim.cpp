@@ -104,29 +104,27 @@ int main(int argc, char **argv)
 		}
 
 		// DEBUG - remove this line
-		cout << "operation: " << operation;
+		// cout << "operation: " << operation;
 
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
 
 		// DEBUG - remove this line
-		cout << ", address (hex)" << cutAddress;
+		// cout << ", address (hex)" << cutAddress;
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
 
 		if (operation == 'r')
 		{
-			cout << "in read" << endl;
 			read(num);
 		}
 		else if (operation == 'w')
 		{
-			cout << "in write" << endl;
 			write(num);
 		}
 
 		// DEBUG - remove this line
-		cout << " (dec) " << num << endl;
+		// cout << " (dec) " << num << endl;
 	}
 
 	double L1MissRate;
@@ -139,11 +137,11 @@ int main(int argc, char **argv)
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
 	printf("AccTimeAvg=%.03f\n", avgAccTime);
-	printf("L1 NumMisses=%.03f ", memConfig.L1.NumMisses);
-	printf("L2 NumMisses=%.03f ", memConfig.L2.NumMisses);
-	printf("totalCycles=%.03f\n", memConfig.totalCycles);
-	printf("L1 NumCalls=%.03f ", memConfig.L1.NumCalls);
-	printf("L2 NumCalls=%.03f ", memConfig.L2.NumCalls);
-	printf("numOperations=%.03f\n", memConfig.numOperations);
+	// printf("L1 NumMisses=%.03f ", memConfig.L1.NumMisses);
+	// printf("L2 NumMisses=%.03f ", memConfig.L2.NumMisses);
+	// printf("totalCycles=%.03f\n", memConfig.totalCycles);
+	// printf("L1 NumCalls=%.03f ", memConfig.L1.NumCalls);
+	// printf("L2 NumCalls=%.03f ", memConfig.L2.NumCalls);
+	// printf("numOperations=%.03f\n", memConfig.numOperations);
 	return 0;
 }
