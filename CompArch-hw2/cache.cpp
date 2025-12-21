@@ -2,6 +2,8 @@
 #include <vector>
 using namespace std;
 
+memConfig_t memConfig;
+
 block createBlock(unsigned tag)
 {
     struct block b;
@@ -11,7 +13,7 @@ block createBlock(unsigned tag)
     return b;
 }
 
-void destroyBlock(block b) // after findBlockToReplace
+void destroyBlock(block &b) // after findBlockToReplace
 {
     // ALL - is this function needed if we only use stack copies of blocks (without 'new' heap-allocation)?
     b.valid = 0;
@@ -48,7 +50,7 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     L2.Cyc = L2Cyc;
     L2.NumCalls = 0;
     L2.NumMisses = 0;
-    L2.Ways.resize(L2NumWays);
+    L2.Ways.resize(1 << L2NumWays);
     for (int i = 0; i < L2.Ways.size(); i++)
     {
         L2.Ways[i].resize(1 << (L2Size - BSize - L2NumWays));
@@ -76,7 +78,7 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
 unsigned getSet(unsigned address, cache &c)
 {
     unsigned set_mask = ((1 << (c.Size - memConfig.BSize - c.NumWays)) - 1);
-    return (address & set_mask) >> memConfig.BSize;
+    return (address >> memConfig.BSize) & set_mask;
 }
 
 unsigned getTag(unsigned address, cache &c)
@@ -88,7 +90,7 @@ void updateLRU(cache &c, unsigned set, unsigned way)
 {
     vector<bool> &lru = c.LRU[set];
     unsigned index = 0;
-    for (unsigned i = 0; i < c.NumWays - 1; i++)
+    for (unsigned i = 0; i < c.NumWays; i++)
     { // go over way bits
         if ((way >> i) & 1)
         { // set 1 and go right
@@ -109,16 +111,16 @@ unsigned findWayToReplace(cache &c, unsigned set)
     vector<bool> &lru = c.LRU[set];
     unsigned wayToReplace = 0;
     unsigned index = 0;
-    for (unsigned i = 0; i < c.NumWays - 1; i++)
+    for (unsigned i = 0; i < c.NumWays; i++)
     { // go against the flow
         if (lru[index])
-        { // 1 - go left
+        { // 1 - go left (to 0)
             index = 2 * index + 1;
-            wayToReplace += 1 << i;
         }
         else
-        { // 0 - go right
+        { // 0 - go right (to 1)
             index = 2 * index + 2;
+            wayToReplace += 1 << i;
         }
     }
     return wayToReplace;
@@ -131,7 +133,8 @@ int checkHit(unsigned address, cache &c)
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 
-    for (unsigned way = 0; way < c.NumWays; way++)
+    unsigned actualNumWays = 1 << c.NumWays;
+    for (unsigned way = 0; way < actualNumWays; way++)
     {
         block b = c.Ways[way][set];
         if (b.valid && b.tag == tag)
@@ -144,6 +147,27 @@ int checkHit(unsigned address, cache &c)
     return 0;
 }
 
+// returns 1 if block found & deleted, else 0
+int deleteBlock(unsigned address, cache &c)
+{
+    // devide address into tag, set, offset
+    unsigned set = getSet(address, c);
+    unsigned tag = getTag(address, c);
+
+    unsigned actualNumWays = 1 << c.NumWays;
+    for (unsigned way = 0; way < actualNumWays; way++)
+    {
+        block b = c.Ways[way][set];
+        if (b.valid && b.tag == tag)
+        {
+            destroyBlock(c.Ways[way][set]);
+            return 1;
+        }
+    }
+    // block not found
+    return 0;
+}
+
 // checks hit and set dirty - 1 for WriteHit, 0 for WriteMiss (then should check write allocate policy)
 int writeToCache(unsigned address, cache &c) // relevant for L1
 {
@@ -151,12 +175,13 @@ int writeToCache(unsigned address, cache &c) // relevant for L1
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 
-    for (unsigned way = 0; way < c.NumWays; way++)
+    unsigned actualNumWays = 1 << c.NumWays;
+    for (unsigned way = 0; way < actualNumWays; way++)
     {
         block b = c.Ways[way][set];
         if (b.valid && b.tag == tag)
         {
-            b.dirty = 1;
+            c.Ways[way][set].dirty = 1;
             updateLRU(c, set, way);
             return 1;
         }
@@ -166,14 +191,16 @@ int writeToCache(unsigned address, cache &c) // relevant for L1
 }
 
 // call on miss to add block to cache, returns address of replaced block when replacing dirty, else return 0
-unsigned addBlockToCache(unsigned address, cache &c)
+addrDirty addBlockToCache(unsigned address, cache &c)
 {
+    addrDirty addr_dirty;
     // devide address into tag, set, offset
     unsigned set = getSet(address, c);
     unsigned tag = getTag(address, c);
 
     // if there is an empty slot, add block there
-    for (unsigned way = 0; way < c.NumWays; way++)
+    unsigned actualNumWays = 1 << c.NumWays;
+    for (unsigned way = 0; way < actualNumWays; way++)
     {
         block b = c.Ways[way][set];
         if (!b.valid)
@@ -182,7 +209,8 @@ unsigned addBlockToCache(unsigned address, cache &c)
             c.Ways[way][set] = createBlock(tag);
             c.Ways[way][set].valid = 1;
             updateLRU(c, set, way);
-            return 0;
+            addr_dirty.deleted = 0;
+            return addr_dirty;
         }
     }
 
@@ -193,13 +221,17 @@ unsigned addBlockToCache(unsigned address, cache &c)
     c.Ways[replaceWay][set].valid = 1;
     updateLRU(c, set, replaceWay);
 
+    addr_dirty.address = (replacedBlock.tag << (c.Size - c.NumWays)) | (set << memConfig.BSize);
+    addr_dirty.deleted = 1;
     // check if replaced block was dirty
     if (replacedBlock.dirty)
     {
-        return (replacedBlock.tag << (c.Size - c.NumWays)) | (set << memConfig.BSize);
+        addr_dirty.dirty = 1;
+        return addr_dirty;
     }
     // replaced block was not dirty and can be discarded
-    return 0;
+    addr_dirty.dirty = 0;
+    return addr_dirty;
 }
 
 void read(unsigned address)
@@ -217,13 +249,13 @@ void read(unsigned address)
     memConfig.totalCycles += memConfig.L2.Cyc;
     memConfig.L2.NumCalls++;
     int hit2 = checkHit(address, memConfig.L2);
-    int dirty_addr1, dirty_addr2;
+    addrDirty dirty_addr1, dirty_addr2;
     if (hit2)
     {
         dirty_addr1 = addBlockToCache(address, memConfig.L1);
-        if (dirty_addr1 != 0)
+        if (dirty_addr1.deleted && dirty_addr1.dirty)
         {
-            writeToCache(dirty_addr1, memConfig.L2);
+            writeToCache(dirty_addr1.address, memConfig.L2);
         }
         return;
     }
@@ -232,17 +264,15 @@ void read(unsigned address)
     memConfig.totalCycles += memConfig.MemCyc; // get info from memory
 
     dirty_addr1 = addBlockToCache(address, memConfig.L1);
-    if (dirty_addr1 != 0)
+    if (dirty_addr1.deleted && dirty_addr1.dirty)
     { // dirty
-        dirty_addr2 = addBlockToCache(dirty_addr1, memConfig.L2);
-        if (dirty_addr2 != 0)
-        { // dirty
-        }
+        writeToCache(dirty_addr1.address, memConfig.L2);
     }
 
     dirty_addr2 = addBlockToCache(address, memConfig.L2);
-    if (dirty_addr2 != 0)
-    { // dirty
+    if (dirty_addr2.deleted)
+    {
+        deleteBlock(dirty_addr2.address, memConfig.L1);
     }
 
     // check hit in each cache until hit or miss in L2
@@ -277,10 +307,10 @@ void write(unsigned address)
             return;
         }
         // write allocate:
-        int dirty_addr1 = addBlockToCache(address, memConfig.L1);
-        if (dirty_addr1 != 0)
+        addrDirty dirty_addr1 = addBlockToCache(address, memConfig.L1);
+        if (dirty_addr1.deleted && dirty_addr1.dirty)
         {
-            writeToCache(dirty_addr1, memConfig.L2);
+            writeToCache(dirty_addr1.address, memConfig.L2);
         }
         writeToCache(address, memConfig.L1); // update to dirty
         return;
@@ -295,15 +325,16 @@ void write(unsigned address)
     }
     // write allocate:
     // bring to L2:
-    int dirty_addr2 = addBlockToCache(address, memConfig.L2);
-    if (dirty_addr2 != 0)
+    addrDirty dirty_addr2 = addBlockToCache(address, memConfig.L2);
+    if (dirty_addr2.deleted)
     {
+        deleteBlock(dirty_addr2.address, memConfig.L1);
     }
     // bring to L1:
-    int dirty_addr1 = addBlockToCache(address, memConfig.L1);
-    if (dirty_addr1 != 0)
+    addrDirty dirty_addr1 = addBlockToCache(address, memConfig.L1);
+    if (dirty_addr1.deleted && dirty_addr1.dirty)
     {
-        writeToCache(dirty_addr1, memConfig.L2);
+        writeToCache(dirty_addr1.address, memConfig.L2);
     }
     // update to dirty in L1:
     writeToCache(address, memConfig.L1);
@@ -316,4 +347,4 @@ void write(unsigned address)
 }
 
 /* on write allocate - check in L1. if miss - check in L2. if miss - bring from memory to L2, but don't update. bring to L1 and update.
-*/
+ */

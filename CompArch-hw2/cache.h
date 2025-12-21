@@ -1,3 +1,7 @@
+
+#ifndef CACHE_H
+#define CACHE_H
+
 // ############ IMPORTS ############
 #include <vector>
 
@@ -37,9 +41,15 @@ struct memConfig_t
     double totalCycles;
 };
 
+struct addrDirty
+{
+    unsigned address;
+    bool dirty;
+    bool deleted;
+};
 // ############ Globals ############
 
-memConfig_t memConfig;
+extern memConfig_t memConfig;
 
 // ############ Functions ############
 
@@ -49,7 +59,7 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
 
 block createBlock(unsigned tag);
 
-void destroyBlock(block b); // delete content from block
+void destroyBlock(block &b); // delete content from block
 
 //////////////////////////////////////////////////
 
@@ -68,7 +78,7 @@ int checkHit(unsigned address, cache &c);
 // write block to cache
 int writeToCache(unsigned address, cache &c);
 
-unsigned addBlockToCache(unsigned address, cache &c);
+addrDirty addBlockToCache(unsigned address, cache &c);
 
 //////////////////////////////////////////////////
 
@@ -79,3 +89,5 @@ void write(unsigned address);
 double getL1MissRate();
 double getL2MissRate();
 double getAvgAccTime();
+
+#endif
