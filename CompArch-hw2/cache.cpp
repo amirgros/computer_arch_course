@@ -10,12 +10,12 @@ block createBlock(unsigned tag)
     b.tag = tag;
     b.valid = 0;
     b.dirty = 0;
+    b.counter = 0;
     return b;
 }
 
 void destroyBlock(block &b) // after findBlockToReplace
 {
-    // ALL - is this function needed if we only use stack copies of blocks (without 'new' heap-allocation)?
     b.valid = 0;
     b.dirty = 0;
     b.tag = 0;
@@ -32,14 +32,13 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     L1.NumCalls = 0;
     L1.NumMisses = 0;
     L1.Ways.resize(1 << L1NumWays);
-    L1.Counters.resize(1 << L1NumWays);
     for (int i = 0; i < L1.Ways.size(); i++)
     {
-        L1.Counters[i] = i;
         L1.Ways[i].resize(1 << (L1Size - BSize - L1NumWays));
         for (int j = 0; j < L1.Ways[i].size(); j++)
         {
             L1.Ways[i][j] = createBlock(0);
+            L1.Ways[i][j].counter = i; // init LRU
         }
     }
     L2.Size = L2Size;
@@ -48,14 +47,13 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     L2.NumCalls = 0;
     L2.NumMisses = 0;
     L2.Ways.resize(1 << L2NumWays);
-    L2.Counters.resize(1 << L2NumWays);
     for (int i = 0; i < L2.Ways.size(); i++)
     {
-        L2.Counters[i] = i;
         L2.Ways[i].resize(1 << (L2Size - BSize - L2NumWays));
         for (int j = 0; j < L2.Ways[i].size(); j++)
         {
             L2.Ways[i][j] = createBlock(0);
+            L2.Ways[i][j].counter = i;
         }
     }
 
@@ -82,27 +80,27 @@ unsigned getTag(unsigned address, cache &c)
 
 void updateLRU(cache &c, unsigned set_index, unsigned way_index)
 {
-    int tmp = c.Counters[way_index];
-    c.Counters[way_index] = c.Counters.size() - 1;
-    for (int i = 0; i < c.Counters.size(); i++)
+    int tmp = c.Ways[way_index][set_index].counter;
+    c.Ways[way_index][set_index].counter = c.Ways.size() - 1;
+    for (int i = 0; i < c.Ways.size(); i++)
     {
-        if (i != way_index && c.Counters[i] > tmp)
+        if (i != way_index && c.Ways[i][set_index].counter > tmp)
         {
-            c.Counters[i]--;
+            c.Ways[i][set_index].counter--;
         }
     }
 }
 
 // LRU - return way index of block to replace
-unsigned findWayToReplace(cache &c, unsigned set)
+unsigned findWayToReplace(cache &c, unsigned set_index)
 {
     unsigned wayToReplace = 0;
-    int count = c.Counters.size();
-    for (int i = 0; i < c.Counters.size(); i++)
+    int count = c.Ways.size();
+    for (int i = 0; i < c.Ways.size(); i++)
     {
-        if (c.Counters[i] < count)
+        if (c.Ways[i][set_index].counter < count)
         {
-            count = c.Counters[i];
+            count = c.Ways[i][set_index].counter;
             wayToReplace = i;
         }
     }
@@ -189,8 +187,9 @@ addrDirty addBlockToCache(unsigned address, cache &c)
         if (!b.valid)
         {
             // found an empty slot
-            c.Ways[way][set] = createBlock(tag);
+            c.Ways[way][set].tag = tag;
             c.Ways[way][set].valid = 1;
+            c.Ways[way][set].dirty = 0;
             updateLRU(c, set, way);
             addr_dirty.deleted = 0;
             return addr_dirty;
@@ -200,8 +199,9 @@ addrDirty addBlockToCache(unsigned address, cache &c)
     // all slots are occupied - need to replace one
     unsigned replaceWay = findWayToReplace(c, set);
     block replacedBlock = c.Ways[replaceWay][set];
-    c.Ways[replaceWay][set] = createBlock(tag);
+    c.Ways[replaceWay][set].tag = tag;
     c.Ways[replaceWay][set].valid = 1;
+    c.Ways[replaceWay][set].dirty = 0;
     updateLRU(c, set, replaceWay);
 
     addr_dirty.address = (replacedBlock.tag << (c.Size - c.NumWays)) | (set << memConfig.BSize);
@@ -220,20 +220,23 @@ addrDirty addBlockToCache(unsigned address, cache &c)
 void read(unsigned address)
 {
     memConfig.numOperations++;
+
+    // SEARCH IN L1
     memConfig.totalCycles += memConfig.L1.Cyc;
     memConfig.L1.NumCalls++;
     int hit1 = checkHit(address, memConfig.L1);
-    if (hit1)
+    if (hit1) // FOUND IN L1
     {
         return;
     }
-    // miss in L1, check L2
+    // MISS IN L1 -> SEARCH IN L2
     memConfig.L1.NumMisses++;
+
     memConfig.totalCycles += memConfig.L2.Cyc;
     memConfig.L2.NumCalls++;
     int hit2 = checkHit(address, memConfig.L2);
     addrDirty dirty_addr1, dirty_addr2;
-    if (hit2)
+    if (hit2) // FOUND IN L2
     {
         dirty_addr1 = addBlockToCache(address, memConfig.L1);
         if (dirty_addr1.deleted && dirty_addr1.dirty)
@@ -242,7 +245,7 @@ void read(unsigned address)
         }
         return;
     }
-    // miss in L2
+    // MISS IN L2 -> BRING FROM MEMORY
     memConfig.L2.NumMisses++;
     memConfig.totalCycles += memConfig.MemCyc; // get info from memory
 
@@ -269,20 +272,21 @@ void write(unsigned address)
 {
     memConfig.numOperations++;
 
+    // SEARCH IN L1
     memConfig.totalCycles += memConfig.L1.Cyc;
     memConfig.L1.NumCalls++;
-    int hit1 = writeToCache(address, memConfig.L1); // also marks dirty
-    if (hit1)
+    int hit1 = writeToCache(address, memConfig.L1); // marks dirty
+    if (hit1) // FOUND IN L1
     {
         return;
     }
-    // miss in L1
+    // MISS IN L1 -> SEARCH IN L2
     memConfig.L1.NumMisses++;
 
     memConfig.totalCycles += memConfig.L2.Cyc;
     memConfig.L2.NumCalls++;
     int hit2 = checkHit(address, memConfig.L2);
-    if (hit2)
+    if (hit2) // FOUND IN L2
     {
         if (memConfig.WrAlloc == 0) // no write allocate
         {
@@ -298,7 +302,7 @@ void write(unsigned address)
         writeToCache(address, memConfig.L1); // update to dirty
         return;
     }
-    // miss in L2
+    // MISS IN L2 -> BRING FROM MEMORY
     memConfig.L2.NumMisses++;
 
     memConfig.totalCycles += memConfig.MemCyc;
@@ -331,3 +335,24 @@ void write(unsigned address)
 
 /* on write allocate - check in L1. if miss - check in L2. if miss - bring from memory to L2, but don't update. bring to L1 and update.
  */
+
+
+ /* 
+ LRU explanation:
+ each set saves a counter that says when it was recently used (biggest = most recently)
+ the set's counter is in relation to the same sets (lines) in the other ways
+ 
+ way1      way2         way3
+|  0 |    |  1  |    |    2   |
+|  2 |    |  0  |    |    1   |
+|  1 |    |  2  |    |    0   |
+|  1 |    |  2  |    |    0   |
+
+if we went now to set0 in way2 the counters will change to:
+
+ way1      way2         way3
+|  0 |    |  2  |    |    1   |
+|  2 |    |  0  |    |    1   |
+|  1 |    |  2  |    |    0   |
+|  1 |    |  2  |    |    0   |
+*/

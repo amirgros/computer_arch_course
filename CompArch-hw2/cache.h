@@ -14,6 +14,7 @@ struct block
     unsigned tag;
     bool valid;
     bool dirty;
+    unsigned counter;
 };
 
 typedef vector<block> way;
@@ -21,7 +22,6 @@ typedef vector<block> way;
 struct cache
 {
     vector<way> Ways;
-    vector<int> Counters;
     unsigned Size;
     unsigned NumWays;
     unsigned Cyc;
