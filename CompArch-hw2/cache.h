@@ -17,12 +17,11 @@ struct block
 };
 
 typedef vector<block> way;
-typedef vector<bool> wayLRU;
 
 struct cache
 {
     vector<way> Ways;
-    vector<wayLRU> LRU; // PLRU - binary tree LRU per set
+    vector<int> Counters;
     unsigned Size;
     unsigned NumWays;
     unsigned Cyc;

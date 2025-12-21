@@ -32,18 +32,15 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     L1.NumCalls = 0;
     L1.NumMisses = 0;
     L1.Ways.resize(1 << L1NumWays);
+    L1.Counters.resize(1 << L1NumWays);
     for (int i = 0; i < L1.Ways.size(); i++)
     {
+        L1.Counters[i] = i;
         L1.Ways[i].resize(1 << (L1Size - BSize - L1NumWays));
         for (int j = 0; j < L1.Ways[i].size(); j++)
         {
             L1.Ways[i][j] = createBlock(0);
         }
-    }
-    L1.LRU.resize(1 << (L1Size - BSize - L1NumWays));
-    for (int i = 0; i < L1.LRU.size(); i++)
-    {
-        L1.LRU[i].resize((1 << L1NumWays) - 1, 0); // k-1 bits for PLRU tree
     }
     L2.Size = L2Size;
     L2.NumWays = L2NumWays;
@@ -51,18 +48,15 @@ void memConfigInit(unsigned MemCyc, unsigned BSize, unsigned L1Size,
     L2.NumCalls = 0;
     L2.NumMisses = 0;
     L2.Ways.resize(1 << L2NumWays);
+    L2.Counters.resize(1 << L2NumWays);
     for (int i = 0; i < L2.Ways.size(); i++)
     {
+        L2.Counters[i] = i;
         L2.Ways[i].resize(1 << (L2Size - BSize - L2NumWays));
         for (int j = 0; j < L2.Ways[i].size(); j++)
         {
             L2.Ways[i][j] = createBlock(0);
         }
-    }
-    L2.LRU.resize(1 << (L2Size - BSize - L2NumWays));
-    for (int i = 0; i < L2.LRU.size(); i++)
-    {
-        L2.LRU[i].resize((1 << L2NumWays) - 1, 0); // k-1 bits for PLRU tree
     }
 
     memConfig.L1 = L1;
@@ -86,21 +80,15 @@ unsigned getTag(unsigned address, cache &c)
     return address >> (c.Size - c.NumWays); // shift right by num bits in set + offset
 }
 
-void updateLRU(cache &c, unsigned set, unsigned way)
+void updateLRU(cache &c, unsigned set_index, unsigned way_index)
 {
-    vector<bool> &lru = c.LRU[set];
-    unsigned index = 0;
-    for (unsigned i = 0; i < c.NumWays; i++)
-    { // go over way bits
-        if ((way >> i) & 1)
-        { // set 1 and go right
-            lru[index] = 1;
-            index = 2 * index + 2;
-        }
-        else
-        { // set 0 and go left
-            lru[index] = 0;
-            index = 2 * index + 1;
+    int tmp = c.Counters[way_index];
+    c.Counters[way_index] = c.Counters.size() - 1;
+    for (int i = 0; i < c.Counters.size(); i++)
+    {
+        if (i != way_index && c.Counters[i] > tmp)
+        {
+            c.Counters[i]--;
         }
     }
 }
@@ -108,19 +96,14 @@ void updateLRU(cache &c, unsigned set, unsigned way)
 // LRU - return way index of block to replace
 unsigned findWayToReplace(cache &c, unsigned set)
 {
-    vector<bool> &lru = c.LRU[set];
     unsigned wayToReplace = 0;
-    unsigned index = 0;
-    for (unsigned i = 0; i < c.NumWays; i++)
-    { // go against the flow
-        if (lru[index])
-        { // 1 - go left (to 0)
-            index = 2 * index + 1;
-        }
-        else
-        { // 0 - go right (to 1)
-            index = 2 * index + 2;
-            wayToReplace += 1 << i;
+    int count = c.Counters.size();
+    for (int i = 0; i < c.Counters.size(); i++)
+    {
+        if (c.Counters[i] < count)
+        {
+            count = c.Counters[i];
+            wayToReplace = i;
         }
     }
     return wayToReplace;
