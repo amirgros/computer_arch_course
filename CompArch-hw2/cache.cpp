@@ -249,17 +249,18 @@ void read(unsigned address)
     memConfig.L2.NumMisses++;
     memConfig.totalCycles += memConfig.MemCyc; // get info from memory
 
+    dirty_addr2 = addBlockToCache(address, memConfig.L2);
+    if (dirty_addr2.deleted)
+    {
+        deleteBlock(dirty_addr2.address, memConfig.L1);
+    }
+    
     dirty_addr1 = addBlockToCache(address, memConfig.L1);
     if (dirty_addr1.deleted && dirty_addr1.dirty)
     { // dirty
         writeToCache(dirty_addr1.address, memConfig.L2);
     }
 
-    dirty_addr2 = addBlockToCache(address, memConfig.L2);
-    if (dirty_addr2.deleted)
-    {
-        deleteBlock(dirty_addr2.address, memConfig.L1);
-    }
 
     // check hit in each cache until hit or miss in L2
     // add blocks to needed caches on miss
