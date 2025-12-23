@@ -14,7 +14,6 @@ using std::ifstream;
 using std::string;
 using std::stringstream;
 
-double round3(double value) { return std::round(value * 1000.0) / 1000.0; }
 
 int main(int argc, char **argv)
 {
@@ -103,13 +102,7 @@ int main(int argc, char **argv)
 			return 0;
 		}
 
-		// DEBUG - remove this line
-		// cout << "operation: " << operation;
-
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
-
-		// DEBUG - remove this line
-		// cout << ", address (hex)" << cutAddress;
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
@@ -123,25 +116,17 @@ int main(int argc, char **argv)
 			write(num);
 		}
 
-		// DEBUG - remove this line
-		// cout << " (dec) " << num << endl;
 	}
 
 	double L1MissRate;
 	double L2MissRate;
 	double avgAccTime;
 
-	L1MissRate = round3((double)memConfig.L1.NumMisses / memConfig.L1.NumCalls);
-	L2MissRate = round3((double)memConfig.L2.NumMisses / memConfig.L2.NumCalls);
-	avgAccTime = round3((double)memConfig.totalCycles / memConfig.numOperations);
+	L1MissRate = ((double)memConfig.L1.NumMisses / memConfig.L1.NumCalls);
+	L2MissRate = ((double)memConfig.L2.NumMisses / memConfig.L2.NumCalls);
+	avgAccTime = ((double)memConfig.totalCycles / memConfig.numOperations);
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
 	printf("AccTimeAvg=%.03f\n", avgAccTime);
-	// printf("L1 NumMisses=%.03f ", memConfig.L1.NumMisses);
-	// printf("L2 NumMisses=%.03f ", memConfig.L2.NumMisses);
-	// printf("totalCycles=%.03f\n", memConfig.totalCycles);
-	// printf("L1 NumCalls=%.03f ", memConfig.L1.NumCalls);
-	// printf("L2 NumCalls=%.03f ", memConfig.L2.NumCalls);
-	// printf("numOperations=%.03f\n", memConfig.numOperations);
 	return 0;
 }
