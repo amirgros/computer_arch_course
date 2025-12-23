@@ -1,14 +1,11 @@
 CXX = g++
 CXXFLAGS = -g -Wall -std=c++11
 
-cacheSim: cacheSim.o cache.o
-	$(CXX) $(CXXFLAGS) -o cacheSim cacheSim.o cache.o
+cacheSim: cacheSim.o
+	$(CXX) $(CXXFLAGS) -o cacheSim cacheSim.o
 
 cacheSim.o: cacheSim.cpp cache.h
 	$(CXX) $(CXXFLAGS) -c cacheSim.cpp
-
-cache.o: cache.cpp cache.h
-	$(CXX) $(CXXFLAGS) -c cache.cpp
 
 .PHONY: clean
 clean:

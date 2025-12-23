@@ -14,6 +14,8 @@ using std::ifstream;
 using std::string;
 using std::stringstream;
 
+memConfig_t memConfig;
+
 
 int main(int argc, char **argv)
 {
