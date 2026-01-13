@@ -26,10 +26,9 @@ ProgCtx analyzeProg(const unsigned int opsLatency[], const InstInfo progTrace[],
     int regs_in_use[32];
     for (int i = 0; i < 32; ++i)
         regs_in_use[i] = -1;
-    // resize graph (already sized via constructor)
-    // dependencies by src
-    // update depth by max{dependency depths} + opcode latency
-    for (int i = 0; i < numOfInsts; i++)
+    
+        // init
+    for (unsigned i = 0; i < numOfInsts; i++)
     {
         node &curr = (*graph_ptr)[i];
         InstInfo curr_trace = progTrace[i];
@@ -88,7 +87,7 @@ int getProgDepth(ProgCtx ctx)
     // find max depth in linear pass on graph vector
     t_graph graph = *(t_graph *)ctx;
     int max_depth = 0;
-    for (int i = 0; i < graph.size(); i++)
+    for (unsigned i = 0; i < graph.size(); i++)
     {
         if (graph[i].depth + graph[i].latency > max_depth)
         {
