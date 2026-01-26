@@ -32,7 +32,6 @@ cpu fg_cpu;
 
 void CORE_BlockedMT()
 {
-	printf("Starting Blocked Multithreading Simulation...\n");
 	// init cpu and threads
 	b_cpu.num_threads = SIM_GetThreadsNum();
 	b_cpu.current_thread = 0;
